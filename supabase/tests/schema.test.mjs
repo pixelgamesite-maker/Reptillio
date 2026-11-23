@@ -112,8 +112,8 @@ console.log("Whitelist");
 await sup(`update profiles set is_admin = true where id=$1`, [ids.A]);
 await as("A", `select admin_adjust_dna($1, 2000, 'test grant')`, [ids.B]);
 ok((await sup(`select count(*)::int n from admin_audit_logs`))[0].n === 1, "admin action audited");
-for (const [item] of [["dna_capsule"], ["ancient_scale"]]) { await as("B", `select purchase_item($1)`, [item]); await as("B", `select evolve()`); }
-ok((await st("B")).profile.level === 4, "B reached Predator");
+await as("B", `select purchase_item('dna_capsule')`); await as("B", `select evolve()`);
+ok((await st("B")).profile.level === 3, "B reached Hunter (Level 3)");
 ok(/Verify a wallet/.test(await err("B", `select claim_whitelist()`)), "claim needs verified wallet");
 ok(/valid EVM/.test(await err("B", `select create_wallet_challenge('0x123')`)), "bad address rejected");
 const ch = (await as("B", `select create_wallet_challenge('0xAbCdEf0123456789abcdef0123456789ABCDEF01') r`))[0].r;
@@ -122,21 +122,51 @@ await db.exec(`set role service_role`); await db.query(`select link_verified_wal
 let e = null; try { await db.query(`select link_verified_wallet($1)`, [ch.challenge_id]); } catch (x) { e = x.message; }
 ok(/already used/.test(e), "challenge single-use");
 s = (await as("B", `select claim_whitelist() s`))[0].s;
-ok(s.allocation.tier === "fcfs" && s.allocation.number === 1, "FCFS #1 claimed");
-for (const item of ["mutation_core", "evolution_catalyst"]) { await as("B", `select purchase_item($1)`, [item]); await as("B", `select evolve()`); }
+ok(s.allocation.tier === "fcfs" && s.allocation.number === 1, "FCFS #1 claimed at Level 3");
+for (const item of ["ancient_scale", "mutation_core", "evolution_catalyst"]) { await as("B", `select purchase_item($1)`, [item]); await as("B", `select evolve()`); }
 s = (await as("B", `select claim_whitelist() s`))[0].s;
-ok(s.profile.level === 6 && s.allocation.tier === "gtd" && s.allocation.number === 1, "Apex upgrade → GTD #1, FCFS released");
-ok((await sup(`select count(*)::int n from whitelist_allocations where tier='fcfs'`))[0].n === 0, "FCFS pool freed");
+ok(s.profile.level === 6 && s.allocation.tier === "fcfs", "Apex alone does NOT give GTD");
 ok(/already Apex/.test(await err("B", `select evolve()`)), "no level 7");
-// C: blocked from reusing B's wallet
+
+console.log("Reptile Rush");
 await as("C", `select ensure_profile(null)`);
+ok(/permission denied/.test(await err("B", `select rush_record_win('ROOM01', $1, $2, 60000, 0)`, [ids.B, ids.C])), "players can't record their own win");
+ok(/permission denied/.test(await err("B", `select rush_player($1)`, [ids.B])), "rush_player is server-only");
+await db.exec(`set role service_role`);
+let rp = (await db.query(`select rush_player($1) r`, [ids.C])).rows[0].r;
+ok(rp.level === 1 && rp.min_level === 3 && rp.won === false, "server sees C's level + no win");
+e = null; try { await db.query(`select rush_record_win('ROOM01', $1, $2, 60000, 0)`, [ids.B, ids.C]); } catch (x) { e = x.message; } 
+ok(/must be Level 3/.test(e), "win rejected while partner is below Level 3");
+await db.exec(`reset role`);
+await sup(`update profiles set level = 3 where id=$1`, [ids.C]);
+await db.exec(`set role service_role`);
+let rw = (await db.query(`select rush_record_win('ROOM01', $1, $2, 184000, 3) r`, [ids.B, ids.C])).rows[0].r;
+ok(rw.new_winners.length === 2, "duo win recorded for both players");
+rw = (await db.query(`select rush_record_win('ROOM02', $1, $2, 150000, 0) r`, [ids.B, ids.C])).rows[0].r;
+ok(rw.new_winners.length === 0, "winning again doesn't create new winners");
+e = null; try { await db.query(`select rush_record_win('ROOM03', $1, $1, 1, 0)`, [ids.B]); } catch (x) { e = x.message; }
+ok(/two different/.test(e), "can't win with yourself");
+await db.exec(`reset role`);
+s = await st("B");
+ok(s.rush && s.rush.won && s.rush.partner === "playerC", "player state shows Rush win + partner");
+s = (await as("B", `select claim_whitelist() s`))[0].s;
+ok(s.allocation.tier === "gtd" && s.allocation.number === 1, "Rush winner upgrades FCFS → GTD #1");
+ok((await sup(`select count(*)::int n from whitelist_allocations where tier='fcfs'`))[0].n === 0, "FCFS slot released on upgrade");
 ok(/already linked/.test(await err("C", `select create_wallet_challenge('0xabcdef0123456789abcdef0123456789abcdef01')`)), "wallet can't be shared");
-// pool cap
-await sup(`update app_config set value = 0 where key='fcfs_limit'`);
-await sup(`update profiles set level = 4 where id=$1`, [ids.C]);
 const ch2 = (await as("C", `select create_wallet_challenge('0x1111111111111111111111111111111111111111') r`))[0].r;
 await db.query(`select link_verified_wallet($1)`, [ch2.challenge_id]);
-ok(/spots are taken/.test(await err("C", `select claim_whitelist()`)), "FCFS cap enforced");
+s = (await as("C", `select claim_whitelist() s`))[0].s;
+ok(s.allocation.tier === "gtd" && s.allocation.number === 2, "partner claims GTD directly (no FCFS first)");
+// FCFS cap still works for non-winners
+await sup(`update app_config set value = 1 where key='fcfs_limit'`);
+await as("A", `select admin_adjust_dna($1, 300, 'test')`, [ids.A]);
+await as("A", `select purchase_item('vitality_extract')`); await as("A", `select evolve()`);
+await as("A", `select purchase_item('dna_capsule')`); await as("A", `select evolve()`);
+const ch3 = (await as("A", `select create_wallet_challenge('0x2222222222222222222222222222222222222222') r`))[0].r;
+await db.query(`select link_verified_wallet($1)`, [ch3.challenge_id]);
+s = (await as("A", `select claim_whitelist() s`))[0].s;
+ok(s.allocation.tier === "fcfs", "non-winner at Level 3 gets FCFS");
+await sup(`update app_config set value = 0 where key='fcfs_limit'`);
 
 console.log("Cap + campaign end");
 await sup(`update app_config set value = extract(epoch from now())::bigint - 10 where key='campaign_ends_epoch'`);
@@ -146,7 +176,7 @@ console.log("Public reads");
 const lb = await as(null, `select * from get_leaderboard(10)`);
 ok(lb[0].handle === "playerB" && lb[0].level === 6, "leaderboard: Apex first");
 const stats = (await as(null, `select get_campaign_stats() s`))[0].s;
-ok(stats.players === 3 && stats.gtd_taken === 1, "stats ok");
+ok(stats.players === 3 && stats.gtd_taken === 2 && stats.rush_winners === 2, "stats ok (2 GTD, 2 Rush winners)");
 ok((await sup(`select count(*)::int n from quiz_questions`))[0].n >= 60, "quiz bank loaded: " + (await sup(`select count(*)::int n from quiz_questions`))[0].n);
 
 console.log(`\n${pass} passed, ${fail} failed`);

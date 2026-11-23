@@ -8,7 +8,9 @@
     "build": "vite build",
     "serve": "vite preview --host 0.0.0.0 --port 8080",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:db": "node supabase/tests/schema.test.mjs"
+    "test:db": "node supabase/tests/schema.test.mjs",
+    "test:rush": "tsx shared/rush/rush.test.ts",
+    "rush:dev": "cd rush-server && npx wrangler dev --var DEV_AUTH:true --port 8787"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.11",
@@ -26,6 +28,7 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.3",
     "vite": "^6.3.2"
   }

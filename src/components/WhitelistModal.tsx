@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAccount, useSignMessage } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { api } from "../lib/api";
@@ -25,9 +26,9 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
   if (!state) return null;
   const lvl = state.profile.level;
   const cfg = state.config;
-  const fcfsLvl = cfg.fcfs_level ?? 4;
-  const gtdLvl = cfg.gtd_level ?? 6;
-  const eligible: "gtd" | "fcfs" | null = lvl >= gtdLvl ? "gtd" : lvl >= fcfsLvl ? "fcfs" : null;
+  const fcfsLvl = cfg.fcfs_level ?? 3;
+  const rushWon = !!state.rush?.won;
+  const eligible: "gtd" | "fcfs" | null = rushWon ? "gtd" : lvl >= fcfsLvl ? "fcfs" : null;
   const alloc = state.allocation;
   const canUpgrade = alloc?.tier === "fcfs" && eligible === "gtd";
   const done = alloc && !canUpgrade;
@@ -65,7 +66,9 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
   }
 
   const shareText = alloc
-    ? `My reptile evolved to ${alloc.tier === "gtd" ? "Apex 👑" : "Predator 🦎"} and secured a ${alloc.tier.toUpperCase()} spot on @Reptilio 🧬\n\nEvolve yours → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
+    ? alloc.tier === "gtd"
+      ? `We cleared Reptile Rush 🦎🪢🦎 and both secured GTD on @Reptilio 👑\n\nGrab a partner → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
+      : `My reptile evolved to Hunter 🦎 and secured an FCFS spot on @Reptilio 🧬\n\nEvolve yours → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
     : "";
 
   return (
@@ -77,7 +80,7 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
         {!eligible && (
           <>
             <h2>Not yet, little one</h2>
-            <p>Reach <b>Level {fcfsLvl} · Predator</b> for FCFS, or <b>Level {gtdLvl} · Apex</b> for a guaranteed spot.</p>
+            <p>Reach <b>Level {fcfsLvl} · Hunter</b> for FCFS. Then clear <b>Reptile Rush</b> with a friend for a guaranteed spot.</p>
             <button className="lab-btn" onClick={onClose}>Keep evolving</button>
           </>
         )}
@@ -90,8 +93,10 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
               <b>#{alloc.number}</b>
               <small>{shortAddr(alloc.wallet)}</small>
             </div>
-            {alloc.tier === "fcfs" && lvl < gtdLvl && (
-              <p className="muted">Keep evolving — reach Apex and you can upgrade this to GTD.</p>
+            {alloc.tier === "fcfs" && !rushWon && (
+              <p className="muted">
+                Want GTD? Clear <Link to="/rush" onClick={onClose}>Reptile Rush</Link> with a friend and upgrade this spot.
+              </p>
             )}
             <a
               className="lab-btn ghost"
@@ -109,7 +114,7 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
             <h2>{canUpgrade ? "Upgrade to GTD" : eligible === "gtd" ? "Claim your GTD spot" : "Claim your FCFS spot"}</h2>
             <p className="muted">
               {eligible === "gtd"
-                ? "Apex reached. A guaranteed allocation is reserved once your wallet is verified."
+                ? "You cleared Reptile Rush. Your guaranteed allocation is reserved once your wallet is verified."
                 : "First come, first served — spots go in the order claims land."}
             </p>
 

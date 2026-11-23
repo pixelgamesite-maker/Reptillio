@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { fmtLeft } from "../lib/game";
 import { useGame, useTick } from "../hooks/useGame";
 import { useSound } from "../hooks/useSound";
-import { CalendarIcon, CheckIcon, DnaIcon, QuizIcon, XGlyph } from "./Icons";
+import { CalendarIcon, CheckIcon, DnaIcon, LockIcon, QuizIcon, XGlyph } from "./Icons";
 
 /** Right drawer: daily check-in, the timed quiz, missions and referrals. */
 export function ActivityPanel({ onOpenQuiz, onMessage }: {
@@ -129,6 +130,9 @@ export function ActivityPanel({ onOpenQuiz, onMessage }: {
         })}
       </ul>
 
+      {/* Upgrade to GTD → Reptile Rush */}
+      <UpgradeCard level={state.profile.level} minLevel={cfg.rush_min_level ?? 3} won={!!state.rush?.won} />
+
       {/* Referrals */}
       <h3 className="panel-sub">Recruit</h3>
       <div className="ref-card">
@@ -142,5 +146,40 @@ export function ActivityPanel({ onOpenQuiz, onMessage }: {
         <small>{state.referrals.joined} joined · {state.referrals.rewarded} paid out</small>
       </div>
     </div>
+  );
+}
+
+function UpgradeCard({ level, minLevel, won }: { level: number; minLevel: number; won: boolean }) {
+  if (won) {
+    return (
+      <Link to="/rush" className="gtd-card is-won">
+        <span className="gtd-card-icon"><CheckIcon size={18} /></span>
+        <span className="gtd-card-text">
+          <b>GTD unlocked</b>
+          <small>You cleared Reptile Rush. Submit your wallet from the whitelist button.</small>
+        </span>
+      </Link>
+    );
+  }
+  if (level < minLevel) {
+    return (
+      <div className="gtd-card is-locked" aria-disabled="true">
+        <span className="gtd-card-icon"><LockIcon size={18} /></span>
+        <span className="gtd-card-text">
+          <b>Upgrade to GTD</b>
+          <small>Reach Level {minLevel} to unlock Reptile Rush.</small>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <Link to="/rush" className="gtd-card">
+      <span className="gtd-card-icon">🪢</span>
+      <span className="gtd-card-text">
+        <b>Upgrade to GTD</b>
+        <small>Play Reptile Rush with a friend. Clear the stage → you both get GTD.</small>
+      </span>
+      <span className="gtd-card-go">Play ›</span>
+    </Link>
   );
 }

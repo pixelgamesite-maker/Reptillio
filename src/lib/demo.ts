@@ -12,13 +12,13 @@ const KEY = "reptilio_demo_v1";
 const CONFIG: Record<string, number> = {
   dna_cap: 1500, checkin_points: 50, quiz_cooldown_minutes: 300, quiz_seconds: 60,
   quiz_reward: 60, quiz_wrong_reward: 10, referral_points: 50, referral_max_rewarded: 10,
-  fcfs_level: 4, gtd_level: 6, fcfs_limit: 1000, gtd_limit: 500, campaign_ends_epoch: 0,
+  fcfs_level: 3, rush_min_level: 3, fcfs_limit: 1000, gtd_limit: 0, campaign_ends_epoch: 0,
 };
 
 const ITEMS: Item[] = [
   { key: "genesis_egg", name: "Genesis Egg", description: "Your free starting egg. Every reptile begins here.", price: 0, sort: 1, purchasable: false },
   { key: "vitality_extract", name: "Vitality Extract", description: "Physical development. Cracks the egg open.", price: 100, sort: 2, purchasable: true },
-  { key: "dna_capsule", name: "DNA Capsule", description: "Genetic material for a sharper, hunting body.", price: 150, sort: 3, purchasable: true },
+  { key: "dna_capsule", name: "DNA Capsule", description: "Hunter form. Unlocks FCFS and Reptile Rush.", price: 150, sort: 3, purchasable: true },
   { key: "ancient_scale", name: "Ancient Scale", description: "Armoured hide. Evolves your reptile into a Predator.", price: 250, sort: 4, purchasable: true },
   { key: "mutation_core", name: "Mutation Core", description: "Molten genetic mutation. Unlocks the Alpha form.", price: 300, sort: 5, purchasable: true },
   { key: "evolution_catalyst", name: "Evolution Catalyst", description: "The rarest resource. Triggers the final Apex transformation.", price: 400, sort: 6, purchasable: true },
@@ -53,6 +53,7 @@ type Db = {
   quiz: { id: string; q: number; started: number; expires: number; answered: boolean } | null;
   quizCount: number; correct: number; wallet: string | null;
   allocation: GameState["allocation"];
+  rushWon?: boolean;
 };
 
 function load(): Db {
@@ -68,6 +69,7 @@ function load(): Db {
   };
   const dna = Number(p.get("dna"));
   if (dna > 0) db.ledger.push({ amount: dna, kind: "earn", source: "demo", ref: "seed" });
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* ignore */ }
   return db;
 }
 let db = load();
@@ -91,7 +93,7 @@ function state(): GameState {
     : null;
   const tomorrow = new Date(); tomorrow.setUTCHours(24, 0, 0, 0);
   return {
-    profile: { id: "demo", handle: "reptile_fan", name: "Demo Player", avatar_url: "", reptilio_id: "RPT-00042", level: db.level, is_admin: false },
+    profile: { id: "demo", handle: demoHandle(), name: "Demo Player", avatar_url: "", reptilio_id: "RPT-00042", level: db.level, is_admin: false },
     balance: balance(), earned: earned(),
     inventory: Object.fromEntries(Object.entries(db.inventory).filter(([, v]) => v > 0)),
     tasks_done: [...db.tasks],
@@ -100,6 +102,7 @@ function state(): GameState {
     quiz: { next_at: q ? new Date(q.started + CONFIG.quiz_cooldown_minutes * 60000).toISOString() : null, open, answered: db.quizCount, correct: db.correct },
     wallet: db.wallet, allocation: db.allocation,
     referrals: { joined: 3, rewarded: 1 },
+    rush: db.rushWon ? { won: true, won_at: new Date().toISOString(), partner: "your_partner", duration_ms: 184000 } : null,
     campaign_open: true, server_now: new Date().toISOString(), config: CONFIG,
   };
 }
@@ -176,7 +179,7 @@ export const demoApi: Api = {
   async claimWhitelist() {
     await wait();
     if (!db.wallet) fail("Verify a wallet first");
-    const tier = db.level >= 6 ? "gtd" : db.level >= 4 ? "fcfs" : fail("Reach Level 4 (Predator) to unlock the whitelist");
+    const tier = db.rushWon ? "gtd" : db.level >= 3 ? "fcfs" : fail("Reach Level 3 (Hunter) to unlock the whitelist");
     if (!db.allocation || (db.allocation.tier === "fcfs" && tier === "gtd")) {
       db.allocation = { tier, number: tier === "gtd" ? 37 : 412, wallet: db.wallet, claimed_at: new Date().toISOString() };
     }
@@ -192,9 +195,26 @@ export const demoApi: Api = {
   },
   async stats() {
     await wait();
-    return { players: 3184, by_level: { 1: 1210, 2: 804, 3: 517, 4: 388, 5: 171, 6: 94 }, fcfs_taken: 341, gtd_taken: 94, fcfs_limit: 1000, gtd_limit: 500, campaign_ends_epoch: 0 };
+    return { players: 3184, by_level: { 1: 1210, 2: 804, 3: 517, 4: 388, 5: 171, 6: 94 }, fcfs_taken: 341, gtd_taken: 126, fcfs_limit: 1000, gtd_limit: 0, campaign_ends_epoch: 0, rush_winners: 126, rush_matches: 210 };
   },
 };
+
+/** Demo-only: pretend the Rush server recorded a win for this player. */
+export function markDemoRushWin() {
+  db.rushWon = true;
+  save();
+}
+
+/** Demo-only handle — open a second tab with ?as=friend to play both seats locally. */
+function demoHandle() {
+  try {
+    const q = new URLSearchParams(location.search).get("as");
+    if (q) sessionStorage.setItem("reptilio_demo_as", q.replace(/[^a-z0-9_]/gi, "").slice(0, 15));
+    return sessionStorage.getItem("reptilio_demo_as") || "reptile_fan";
+  } catch {
+    return "reptile_fan";
+  }
+}
 
 /** Demo-only: wipe progress. */
 export function resetDemo() {

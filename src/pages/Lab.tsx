@@ -120,13 +120,13 @@ export default function Lab() {
 
   const level = state.profile.level;
   const info = LEVELS[level - 1];
-  const fcfsLvl = state.config.fcfs_level ?? 4;
-  const gtdLvl = state.config.gtd_level ?? 6;
+  const fcfsLvl = state.config.fcfs_level ?? 3;
+  const rushWon = !!state.rush?.won;
 
   const missingCost = nextReqs.reduce((s, r) => s + Math.max(0, r.need - r.have) * r.item.price, 0);
   const fill = level >= 6 || canEvolve ? 1 : missingCost === 0 ? 1 : Math.min(1, state.balance / missingCost);
-  const wlEligible = level >= fcfsLvl;
-  const wlAction = wlEligible && (!state.allocation || (state.allocation.tier === "fcfs" && level >= gtdLvl));
+  const wlEligible = level >= fcfsLvl || rushWon;
+  const wlAction = wlEligible && (!state.allocation || (state.allocation.tier === "fcfs" && rushWon));
   const nextBuyable = nextReqs.find((r) => r.have < r.need);
 
   return (
@@ -222,8 +222,7 @@ export default function Lab() {
             <div key={l.level} className={`ms ${l.level <= level ? "on" : ""} ${l.level === level ? "cur" : ""}`}>
               <span className="ms-dot" />
               <small>{l.name}</small>
-              {l.level === fcfsLvl && <em>FCFS</em>}
-              {l.level === gtdLvl && <em>GTD</em>}
+              {l.level === fcfsLvl && <em>FCFS · RUSH</em>}
             </div>
           ))}
         </div>
@@ -232,7 +231,7 @@ export default function Lab() {
           {state.allocation
             ? `${state.allocation.tier.toUpperCase()} #${state.allocation.number}${wlAction ? " · Upgrade to GTD" : " · secured"}`
             : wlEligible
-              ? `Claim your ${level >= gtdLvl ? "GTD" : "FCFS"} spot`
+              ? `Claim your ${rushWon ? "GTD" : "FCFS"} spot`
               : `Whitelist unlocks at Lv ${fcfsLvl} · ${levelName(fcfsLvl)}`}
         </button>
       </main>
@@ -253,11 +252,11 @@ export default function Lab() {
             <Reptile level={evolvedTo} size={180} className="pop-in" />
             <h2>{levelName(evolvedTo)}</h2>
             <p>{LEVELS[evolvedTo - 1].blurb}</p>
-            {evolvedTo === fcfsLvl && <div className="milestone-banner">FCFS whitelist unlocked</div>}
-            {evolvedTo === gtdLvl && <div className="milestone-banner gold">GTD whitelist unlocked</div>}
-            {evolvedTo === fcfsLvl || evolvedTo === gtdLvl ? (
+            {evolvedTo === fcfsLvl && <div className="milestone-banner">FCFS unlocked</div>}
+            {evolvedTo === fcfsLvl && <div className="milestone-banner gold">Reptile Rush unlocked — win GTD with a friend</div>}
+            {evolvedTo === fcfsLvl ? (
               <button className="lab-btn big" onClick={() => { setEvolvedTo(null); setWlOpen(true); }}>
-                Claim {evolvedTo === gtdLvl ? "GTD" : "FCFS"}
+                Claim FCFS
               </button>
             ) : (
               <button className="lab-btn big" onClick={() => setEvolvedTo(null)}>Keep evolving</button>
@@ -275,7 +274,7 @@ export default function Lab() {
             <ol className="welcome-steps">
               <li><b>Earn DNA</b> — check in, take the quiz and finish missions in <em>Daily</em>.</li>
               <li><b>Buy specimens</b> — each one in <em>Specimens</em> feeds the next evolution.</li>
-              <li><b>Evolve</b> — reach <em>Predator</em> for FCFS, <em>Apex</em> for GTD.</li>
+              <li><b>Evolve</b> — reach <em>Hunter</em> for FCFS, then win <em>Reptile Rush</em> with a friend for GTD.</li>
             </ol>
             <button className="lab-btn big" onClick={() => { setWelcome(false); openRight(true); }}>Start earning</button>
           </div>
