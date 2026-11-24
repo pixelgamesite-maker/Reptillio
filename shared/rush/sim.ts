@@ -10,9 +10,12 @@
  *  - You can land on your partner's head (one-way) to reach higher ledges.
  *  - Plates (a, b) hold gates (A, B) open while someone stands on them.
  *  - Spikes / falling out = both respawn at the last checkpoint.
- *  - Both inside the exit = stage cleared.
+ *  - Both inside the exit = stage cleared → next stage; clear the last = win.
+ *  - Troll traps (collapsing floors, pop-up spikes, fake/invisible blocks,
+ *    a runaway exit) — see stage.ts. Their state lives in World.traps, so the
+ *    server decides when they fire, exactly like everything else.
  */
-import { STAGE, type Stage } from "./stage";
+import { STAGES, type Rect, type Stage } from "./stage";
 
 export const TILE = 32;
 export const TICK_HZ = 60;
@@ -34,11 +37,11 @@ export const PHYS = {
   jumpBuffer: 0.12,
   ropeMax: 224,
   ropeMin: 20,
-  mantle: 12, // being reeled: hop onto a ledge whose top is within this many px of your feet
+  mantle: 12, // pulled by the rope from above: hop onto a ledge whose top is within this many px of your feet
   reelSpeed: 170,
   unreelSpeed: 260,
   groundedWeight: 0.35,
-  timeLimitSec: 600,
+  timeLimitSec: 600, // per stage
 };
 
 export type Input = {
@@ -68,7 +71,11 @@ export type Player = {
 export type Status = "playing" | "won" | "timeout";
 
 export type World = {
-  tick: number;
+  tick: number; // total ticks this run
+  stage: number; // index into STAGES
+  stageTick: number; // ticks since this stage started (traps + time limit use this)
+  /** per trap: stageTick it fired at, or -1 */
+  traps: number[];
   players: [Player, Player];
   rope: number;
   checkpoint: number; // index into stage.checkpoints (0 = spawn)
@@ -77,7 +84,8 @@ export type World = {
   status: Status;
 };
 
-export type SimEvent = "death" | "checkpoint" | "win" | "timeout";
+/** "death:0" / "death:1" (who fell for it), "checkpoint", "stage", "trap:<kind>", "win", "timeout" */
+export type SimEvent = string;
 
 // ── stage helpers ──────────────────────────────────────────────────────
 const at = (s: Stage, tx: number, ty: number) => {
@@ -88,7 +96,29 @@ const at = (s: Stage, tx: number, ty: number) => {
 const gateBit = (ch: string) => 1 << (ch.charCodeAt(0) - 65); // 'A' → bit 0
 const plateBit = (ch: string) => 1 << (ch.charCodeAt(0) - 97); // 'a' → bit 0
 
+const inRect = (r: Rect, tx: number, ty: number) => tx >= r.x0 && tx <= r.x1 && ty >= r.y0 && ty <= r.y1;
+
+/** Has trap i fired long enough ago to be "on"? */
+function trapOn(s: Stage, w: World, i: number) {
+  const t = s.traps[i];
+  const at0 = w.traps[i] ?? -1;
+  if (at0 < 0) return false;
+  return w.stageTick - at0 >= ("delay" in t ? t.delay : 0);
+}
+
+function trapIndex(s: Stage, tx: number, ty: number) {
+  if (tx < 0 || tx >= s.w || ty < 0 || ty >= s.h) return -1;
+  return s.trapAt[ty * s.w + tx];
+}
+
 function solidAt(s: Stage, w: World, tx: number, ty: number) {
+  const ti = trapIndex(s, tx, ty);
+  if (ti >= 0) {
+    const t = s.traps[ti];
+    if (t.kind === "collapse") return !trapOn(s, w, ti);
+    if (t.kind === "invisible") return true;
+    if (t.kind === "spikes") return false;
+  }
   const c = at(s, tx, ty);
   if (c === "#") return true;
   if (c === "A" || c === "B") return (w.open & gateBit(c)) === 0;
@@ -155,7 +185,30 @@ function moveY(s: Stage, w: World, p: Player, dy: number, other: Player | null):
 
 const center = (p: Player) => ({ x: p.x + PHYS.w / 2, y: p.y + PHYS.h / 2 });
 
-/** While being reeled into a wall, get pulled up over its lip. Reel-only, so it never helps a solo climb. */
+function boxAny(x: number, y: number, inset: number, pred: (tx: number, ty: number) => boolean) {
+  const x0 = Math.floor((x + inset) / TILE), x1 = Math.floor((x + PHYS.w - inset - 0.001) / TILE);
+  const y0 = Math.floor((y + inset) / TILE), y1 = Math.floor((y + PHYS.h - inset - 0.001) / TILE);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (pred(tx, ty)) return true;
+  return false;
+}
+
+/** The exit rectangle right now (a runaway exit moves once triggered). */
+export function currentExit(s: Stage, w: World): Rect {
+  const i = s.traps.findIndex((t) => t.kind === "runaway");
+  if (i >= 0 && (w.traps[i] ?? -1) >= 0) return (s.traps[i] as Extract<Stage["traps"][number], { kind: "runaway" }>).to;
+  return s.exit;
+}
+
+/** Is tile (tx,ty) deadly right now? */
+export function spikeAt(s: Stage, w: World, tx: number, ty: number) {
+  if (at(s, tx, ty) === "^") return true;
+  const ti = trapIndex(s, tx, ty);
+  return ti >= 0 && s.traps[ti].kind === "spikes" && trapOn(s, w, ti);
+}
+
+export { trapOn };
+
+/** When the rope pulls you into a wall from above, get hauled up over its lip. Needs a partner above you, so it never helps a solo climb. */
 function tryMantle(s: Stage, w: World, p: Player, dir: number) {
   if (dir === 0) return;
   const front = dir > 0 ? p.x + PHYS.w + 1 : p.x - 1;
@@ -186,17 +239,22 @@ function placeAt(s: Stage, idx: number): [Player, Player] {
   return [mk(base - 14), mk(base + 14)];
 }
 
-export function newWorld(s: Stage = STAGE): World {
-  return { tick: 0, players: placeAt(s, 0), rope: PHYS.ropeMax, checkpoint: 0, deaths: 0, open: 0, status: "playing" };
+export function newWorld(stage = 0): World {
+  const s = STAGES[stage];
+  return {
+    tick: 0, stage, stageTick: 0, traps: s.traps.map(() => -1),
+    players: placeAt(s, 0), rope: PHYS.ropeMax, checkpoint: 0, deaths: 0, open: 0, status: "playing",
+  };
 }
 
 export function cloneWorld(w: World): World {
-  return { ...w, players: [{ ...w.players[0] }, { ...w.players[1] }] };
+  return { ...w, traps: [...w.traps], players: [{ ...w.players[0] }, { ...w.players[1] }] };
 }
 
 // ── one fixed step ─────────────────────────────────────────────────────
-export function step(w: World, inputs: [Input, Input], s: Stage = STAGE, events?: SimEvent[]): World {
+export function step(w: World, inputs: [Input, Input], events?: SimEvent[]): World {
   if (w.status !== "playing") return w;
+  const s = STAGES[w.stage];
   const ps = w.players;
 
   // 1. Each player's own motion
@@ -281,10 +339,9 @@ export function step(w: World, inputs: [Input, Input], s: Stage = STAGE, events?
       moveX(s, w, b, -nx * kb);
       if (moveY(s, w, b, -ny * kb, a) === null && -ny * kb < 0) b.grounded = false;
     }
-    if (reeling) {
-      if (wa > 0 && !a.anchored) tryMantle(s, w, a, Math.sign(nx));
-      if (wb > 0 && !b.anchored) tryMantle(s, w, b, -Math.sign(nx));
-    }
+    // a taut rope pulls a dangling partner up over a ledge (needs someone above — never helps solo)
+    if (wa > 0 && !a.anchored && ny < 0.2) tryMantle(s, w, a, Math.sign(nx));
+    if (wb > 0 && !b.anchored && -ny < 0.2) tryMantle(s, w, b, -Math.sign(nx));
     const vrel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
     if (vrel > 0) {
       const ia = (vrel * wa) / (wa + wb), ib = (vrel * wb) / (wa + wb);
@@ -307,20 +364,44 @@ export function step(w: World, inputs: [Input, Input], s: Stage = STAGE, events?
   }
   w.open = open;
 
-  // 5. Hazards, checkpoints, exit
-  let died = false;
-  for (const p of ps) {
-    if (p.y > s.h * TILE + 64) died = true;
-    if (boxTouches(s, p.x, p.y, (c) => c === "^", 5)) died = true;
-  }
-  if (died) {
+  // 5. Troll traps: fire when someone walks into the zone / onto the plate
+  s.traps.forEach((t, i) => {
+    if (w.traps[i] >= 0) return;
+    let fire = false;
+    if (t.kind === "collapse" && t.plate) fire = (pressed & plateBit(t.plate)) !== 0;
+    else if (t.kind === "invisible") {
+      // revealed by bumping/standing on it (box grown by 3px touches the tiles)
+      fire = ps.some((p) => boxAny(p.x, p.y, -3, (tx, ty) => inRect(t.tiles, tx, ty)));
+    } else if ("zone" in t && t.zone) {
+      const z = t.zone;
+      fire = ps.some((p) => inRect(z, Math.floor((p.x + PHYS.w / 2) / TILE), Math.floor((p.y + PHYS.h / 2) / TILE)));
+    }
+    if (fire) {
+      w.traps[i] = w.stageTick;
+      events?.push(`trap:${t.kind}`);
+    }
+  });
+
+  // 6. Hazards, checkpoints, exit
+  let died = -1;
+  ps.forEach((p, i) => {
+    if (died >= 0) return;
+    if (p.y > s.h * TILE + 64) died = i;
+    else if (boxAny(p.x, p.y, 5, (tx, ty) => spikeAt(s, w, tx, ty))) died = i;
+  });
+  if (died >= 0) {
     w.deaths++;
     w.players = placeAt(s, w.checkpoint);
     // carry jump counters across the respawn so stale presses aren't replayed
     w.players[0].lastJp = ps[0].lastJp;
     w.players[1].lastJp = ps[1].lastJp;
     w.rope = PHYS.ropeMax;
-    events?.push("death");
+    // collapses + pop-up spikes re-arm (you know where they are now);
+    // revealed blocks and a moved exit stay as they are
+    s.traps.forEach((t, i) => {
+      if (t.kind === "collapse" || t.kind === "spikes") w.traps[i] = -1;
+    });
+    events?.push(`death:${died}`);
   } else {
     for (const p of ps) {
       const hit = boxTouches(s, p.x, p.y, (c) => c === "C");
@@ -332,15 +413,33 @@ export function step(w: World, inputs: [Input, Input], s: Stage = STAGE, events?
         }
       }
     }
-    const inExit = (p: Player) => !!boxTouches(s, p.x, p.y, (c) => c === "E", 4);
+    const ex = currentExit(s, w);
+    const inExit = (p: Player) => boxAny(p.x, p.y, 4, (tx, ty) => inRect(ex, tx, ty));
     if (inExit(ps[0]) && inExit(ps[1])) {
-      w.status = "won";
-      events?.push("win");
+      if (w.stage < STAGES.length - 1) {
+        // next stage
+        const next = STAGES[w.stage + 1];
+        const keep = [ps[0].lastJp, ps[1].lastJp];
+        w.stage++;
+        w.stageTick = -1; // becomes 0 below
+        w.traps = next.traps.map(() => -1);
+        w.checkpoint = 0;
+        w.open = 0;
+        w.rope = PHYS.ropeMax;
+        w.players = placeAt(next, 0);
+        w.players[0].lastJp = keep[0];
+        w.players[1].lastJp = keep[1];
+        events?.push("stage");
+      } else {
+        w.status = "won";
+        events?.push("win");
+      }
     }
   }
 
   w.tick++;
-  if (w.status === "playing" && w.tick >= PHYS.timeLimitSec * TICK_HZ) {
+  w.stageTick++;
+  if (w.status === "playing" && w.stageTick >= PHYS.timeLimitSec * TICK_HZ) {
     w.status = "timeout";
     events?.push("timeout");
   }
@@ -364,7 +463,7 @@ export function packWorld(w: World): unknown[] {
     (p.grounded ? 1 : 0) | (p.anchored ? 2 : 0) | (p.jumping ? 4 : 0) | (p.facing < 0 ? 8 : 0),
     r2(p.coyote), r2(p.buffer), p.lastJp, 0,
   ];
-  return [w.tick, pp(w.players[0]), pp(w.players[1]), r2(w.rope), w.checkpoint, w.deaths, w.open, w.status];
+  return [w.tick, pp(w.players[0]), pp(w.players[1]), r2(w.rope), w.checkpoint, w.deaths, w.open, w.status, w.stage, w.stageTick, w.traps];
 }
 
 export function unpackWorld(a: unknown[]): World {
@@ -381,5 +480,8 @@ export function unpackWorld(a: unknown[]): World {
     deaths: a[5] as number,
     open: a[6] as number,
     status: a[7] as Status,
+    stage: (a[8] as number) ?? 0,
+    stageTick: (a[9] as number) ?? 0,
+    traps: [...((a[10] as number[]) ?? [])],
   };
 }

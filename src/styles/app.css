@@ -881,3 +881,12 @@ img { display: block; }
 .rush-page:has(.rush-play) .topbar { display: none; }
 .rush-page:has(.rush-play) .rush-main { z-index: auto; }
 .hud-exit { width: 30px; height: 30px; border-radius: 50%; border: 1px solid #3c4a40; background: rgba(0,0,0,0.4); color: var(--muted); font-size: 1rem; line-height: 1; }
+.rush-stage-banner {
+  position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); pointer-events: none; text-align: center;
+  display: flex; flex-direction: column; gap: 4px; padding: 18px 28px; border-radius: 18px;
+  background: rgba(40,8,8,0.88); border: 2px solid #ff6b5b; box-shadow: 0 0 60px rgba(255,90,70,0.45);
+  animation: pop 0.5s cubic-bezier(.2,1.6,.4,1);
+}
+.rush-stage-banner small { font-weight: 800; letter-spacing: 0.25em; text-transform: uppercase; color: #ffb4aa; font-size: 0.72rem; }
+.rush-stage-banner b { font-family: var(--display); font-weight: 400; font-size: clamp(1.6rem, 5vw, 2.6rem); color: #fff1ee; }
+.rush-stage-banner span { color: #ffb4aa; font-size: 0.9rem; }

@@ -50,6 +50,8 @@ export class RushClient {
   seat: 0 | 1 = 0;
   connected = false;
   rttMs = 120;
+  /** performance.now() of the last death — drives screen shake. */
+  lastDeathAt = -1e9;
 
   /** Latest authoritative world and the locally predicted one we render. */
   server: World | null = null;
@@ -152,7 +154,10 @@ export class RushClient {
         break;
       }
       case "e":
-        m.e.forEach((e) => this.l.onEvent?.(e));
+        m.e.forEach((e) => {
+          if (e.startsWith("death")) this.lastDeathAt = performance.now();
+          this.l.onEvent?.(e);
+        });
         break;
       case "won":
         this.l.onWon?.(m);

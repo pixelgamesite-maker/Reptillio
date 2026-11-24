@@ -32,6 +32,9 @@ export class RushRoom {
   private acc = 0;
   private startedAt = 0;
   private pausedSince = 0;
+  /** After a timeout, the same duo restarts at the stage they reached. */
+  private resumeStage = 0;
+  private resumePair = "";
 
   constructor(private state: DurableObjectState, private env: Env) {}
 
@@ -241,7 +244,8 @@ export class RushRoom {
       }
       if (now >= this.countdownEnd) {
         this.status = "playing";
-        this.world = newWorld();
+        const pair = this.pairKey();
+        this.world = newWorld(pair === this.resumePair ? this.resumeStage : 0);
         for (const s of this.seats) if (s) { s.input = { ...NO_INPUT, jp: s.input.jp }; }
         // jump counters persist per socket; start the world in sync with them
         if (this.world && this.seats[0] && this.seats[1]) {
@@ -275,19 +279,21 @@ export class RushRoom {
     const events: SimEvent[] = [];
     let ticks = 0;
     while (this.acc >= DT * 1000 && ticks < 8) {
-      step(this.world, [this.seats[0].input, this.seats[1].input], undefined, events);
+      step(this.world, [this.seats[0].input, this.seats[1].input], events);
       this.acc -= DT * 1000;
       ticks++;
       if (this.world.tick % SNAPSHOT_EVERY === 0) this.sendSnapshot();
       if (this.world.status !== "playing") break;
     }
 
-    const notable = events.filter((e) => e === "death" || e === "checkpoint");
+    const notable = events.filter((e) => e !== "win" && e !== "timeout");
     if (notable.length) this.broadcast({ t: "e", e: notable });
 
     if (this.world.status === "won") void this.finishWon();
     else if (this.world.status === "timeout") {
       this.status = "timeout";
+      this.resumeStage = this.world.stage;
+      this.resumePair = this.pairKey();
       this.sendSnapshot();
       this.broadcast({ t: "timeout" });
       this.broadcastRoom();
@@ -297,6 +303,7 @@ export class RushRoom {
   private async finishWon() {
     if (this.status !== "playing" || !this.world) return;
     this.status = "won";
+    this.resumeStage = 0;
     this.sendSnapshot();
     const ms = Math.round((this.world.tick / 60) * 1000);
     const deaths = this.world.deaths;
@@ -317,6 +324,10 @@ export class RushRoom {
       if (s) s.ready = false;
     }
     this.broadcastRoom();
+  }
+
+  private pairKey() {
+    return [this.seats[0]?.info.id ?? "", this.seats[1]?.info.id ?? ""].sort().join("|");
   }
 
   // ── messaging ─────────────────────────────────────────────────────

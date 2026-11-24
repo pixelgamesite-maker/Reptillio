@@ -109,7 +109,7 @@ function RushHome() {
 
   return (
     <Card>
-      <span className="eyebrow">Stage 1 · {STAGE_INFO.name}</span>
+      <span className="eyebrow">2 stages · {STAGE_INFO.name}</span>
       <h2>Clear it together. Win GTD together.</h2>
       {won ? (
         <div className="rush-won-banner">
@@ -121,7 +121,8 @@ function RushHome() {
         <li><b>You're roped together.</b> Neither of you can get more than 7 tiles away.</li>
         <li><b>Anchor</b> (hold on the ground) to become a fixed point. <b>Anchor + Jump</b> reels your partner in.</li>
         <li>Stand on your partner's head to reach high ledges. Plates hold gates open.</li>
-        <li>Both reach the glowing exit → <b>both</b> win GTD. {won && "You can still play to help a friend."}</li>
+        <li><b>Stage 2 is a troll stage.</b> Floors drop, spikes pop up, blocks lie. You will die. A lot. 😈</li>
+        <li>Clear both stages → <b>both</b> win GTD. {won && "You can still play to help a friend."}</li>
       </ul>
       <div className="rush-actions">
         <button className="lab-btn big" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create a room"}</button>
@@ -164,6 +165,8 @@ function RushRoom({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   const hud = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<Voice | null>(null);
+  const latestSeats = useRef<[SeatView | null, SeatView | null]>([null, null]);
+  const [stageBanner, setStageBanner] = useState(false);
   useTick(200);
 
   // Connect once per room.
@@ -177,6 +180,7 @@ function RushRoom({ code }: { code: string }) {
         onRoom: (s, st, cd, p) => {
           setStatus(s);
           setSeats(st);
+          latestSeats.current = st;
           setPaused(p);
           if (s === "countdown") setCountdownEnd(performance.now() + cd);
           if (s === "lobby" || s === "countdown") setResult(null);
@@ -184,8 +188,20 @@ function RushRoom({ code }: { code: string }) {
           if (!partner?.connected) voiceRef.current?.reset();
         },
         onEvent: (e) => {
-          if (e === "death") { play("error"); flash("Ouch! Back to the checkpoint."); }
-          if (e === "checkpoint") { play("purchase"); flash("Checkpoint!"); }
+          if (e.startsWith("death")) {
+            play("error");
+            const who = Number(e.split(":")[1]);
+            const name = latestSeats.current[who]?.handle;
+            flash(who === c!.seat ? pick(YOU_DIED) : `💀 @${name ?? "your partner"} ${pick(THEY_DIED)}`);
+          }
+          if (e === "checkpoint") { play("purchase"); flash("Checkpoint! ⚑"); }
+          if (e === "stage") {
+            play("levelup");
+            setStageBanner(true);
+            setTimeout(() => setStageBanner(false), 3200);
+          }
+          if (e === "trap:runaway") flash("The exit… ran away?! 🏃");
+          if (e === "trap:invisible") flash("Wait — there's a block there? 👀");
         },
         onWon: (m) => {
           play("claim");
@@ -250,9 +266,10 @@ function RushRoom({ code }: { code: string }) {
 
   const onFrame = useCallback((w: World) => {
     if (!hud.current) return;
-    const s = Math.floor(w.tick / 60);
+    const s = Math.floor(w.stageTick / 60);
     const left = Math.max(0, 600 - s);
-    hud.current.textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left · ☠ ${w.deaths} · ⚑ ${w.checkpoint}/${STAGE_INFO.checkpoints}`;
+    const st = STAGE_INFO.stages[w.stage];
+    hud.current.textContent = `Stage ${w.stage + 1}/${STAGE_INFO.stages.length} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} · ☠ ${w.deaths} · ⚑ ${w.checkpoint}/${st?.checkpoints ?? 0}`;
   }, []);
 
   if (fatal) {
@@ -343,6 +360,13 @@ function RushRoom({ code }: { code: string }) {
           <div className="rush-keys">A/D move · W/Space jump · S/Shift anchor · anchor + jump = reel</div>
           {status === "countdown" && <div className="rush-countdown" key={cdLeft}>{cdLeft || "GO!"}</div>}
           {paused && <div className="rush-banner">Partner disconnected — waiting up to 60s…</div>}
+          {stageBanner && (
+            <div className="rush-stage-banner">
+              <small>Stage 2</small>
+              <b>{STAGE_INFO.stages[1].name}</b>
+              <span>{STAGE_INFO.stages[1].tagline} 😈</span>
+            </div>
+          )}
           {note && <div className="rush-toast">{note}</div>}
           {voice?.needsTap && <button className="rush-banner tap" onClick={() => voice.resumeAudio()}>🔊 Tap to hear your partner</button>}
 
@@ -370,7 +394,7 @@ function RushRoom({ code }: { code: string }) {
                   <>
                     <span className="eyebrow">Time's up</span>
                     <h2>So close</h2>
-                    <p>10 minutes ran out. Talk it through and try again.</p>
+                    <p>10 minutes ran out on this stage. Talk it through — you'll restart from the stage you reached.</p>
                     <button className="lab-btn big" onClick={() => client.again()}>Try again</button>
                   </>
                 )}
@@ -407,4 +431,10 @@ function SeatCard({ seat, you, speaking }: { seat: SeatView | null; you: boolean
       </span>
     </div>
   );
+}
+
+const YOU_DIED = ["💀 You fell for it", "💀 Skill issue", "💀 You died. Again.", "💀 That one was on you", "💀 Ouch."];
+const THEY_DIED = ["fell for it", "killed you both", "had a skill issue", "is the reason you died", "walked right into that"];
+function pick(a: string[]) {
+  return a[Math.floor(Math.random() * a.length)];
 }

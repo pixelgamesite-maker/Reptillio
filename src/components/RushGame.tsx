@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { STAGE } from "../../shared/rush/stage";
-import { DT, PHYS, TILE, type World } from "../../shared/rush/sim";
+import { STAGES, type Stage } from "../../shared/rush/stage";
+import { DT, PHYS, TILE, currentExit, spikeAt, type World } from "../../shared/rush/sim";
 import type { RushClient } from "../lib/rush";
 
 const COLORS = [
@@ -18,7 +18,7 @@ export function RushGame({ client, names, onFrame }: {
   onFrame?: (w: World) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cam = useRef({ x: 0, y: 0, init: false });
+  const cam = useRef({ x: 0, y: 0, init: false, stage: 0 });
 
   // Keyboard
   useEffect(() => {
@@ -63,7 +63,7 @@ export function RushGame({ client, names, onFrame }: {
     let raf = 0;
     let last = performance.now();
     let acc = 0;
-    const tiles = prerenderTiles();
+    const tiles = new Map<number, Tiles>();
 
     const frame = (now: number) => {
       acc += Math.min(100, now - last);
@@ -74,7 +74,8 @@ export function RushGame({ client, names, onFrame }: {
       }
       const w = client.predicted;
       if (w) {
-        draw(ctx, canvas, w, client, names, cam.current, tiles, now);
+        if (!tiles.has(w.stage)) tiles.set(w.stage, prerenderTiles(STAGES[w.stage]));
+        draw(ctx, canvas, w, client, names, cam.current, tiles.get(w.stage)!, now);
         onFrame?.(w);
       }
       raf = requestAnimationFrame(frame);
@@ -131,42 +132,56 @@ function TouchControls({ client }: { client: RushClient }) {
 // ── drawing ───────────────────────────────────────────────────────────
 type Tiles = HTMLCanvasElement;
 
-/** Draw the static stage once into an offscreen canvas. */
-function prerenderTiles(): Tiles {
+/** One stone block — shared by the static layer and the trap tiles drawn live. */
+function drawBlock(g: CanvasRenderingContext2D, x: number, y: number, px: number, py: number, mossy: boolean) {
+  const shade = ((x * 7 + y * 13) % 5) * 3;
+  g.fillStyle = `rgb(${46 + shade},${58 + shade},${50 + shade})`;
+  g.fillRect(px, py, TILE, TILE);
+  g.strokeStyle = "rgba(0,0,0,0.25)";
+  g.lineWidth = 1;
+  g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+  g.fillStyle = "rgba(255,255,255,0.04)";
+  g.fillRect(px + 2, py + 2, TILE - 4, 3);
+  if (mossy) {
+    g.fillStyle = "#3f8f4a";
+    g.fillRect(px, py, TILE, 6);
+    g.fillStyle = "#62b65f";
+    for (let i = 0; i < 4; i++) g.fillRect(px + i * 8 + ((x + i) % 3), py + 4, 3, 4 + ((x * 3 + i) % 4));
+  }
+}
+
+function drawSpikes(g: CanvasRenderingContext2D, px: number, py: number, rise = 1) {
+  g.fillStyle = "#d9d2bd";
+  const top = py + TILE - (TILE - 8) * rise;
+  for (let i = 0; i < 4; i++) {
+    g.beginPath();
+    g.moveTo(px + i * 8, py + TILE);
+    g.lineTo(px + i * 8 + 4, top);
+    g.lineTo(px + i * 8 + 8, py + TILE);
+    g.fill();
+  }
+}
+
+/** Draw a stage's static tiles once into an offscreen canvas. Trap tiles are left out — they're drawn live. Fakes ('f') look exactly like real blocks. */
+function prerenderTiles(S: Stage): Tiles {
   const c = document.createElement("canvas");
-  c.width = STAGE.w * TILE;
-  c.height = STAGE.h * TILE;
+  c.width = S.w * TILE;
+  c.height = S.h * TILE;
   const g = c.getContext("2d")!;
-  const at = (x: number, y: number) => STAGE.rows[y]?.[x] ?? "#";
-  for (let y = 0; y < STAGE.h; y++) {
-    for (let x = 0; x < STAGE.w; x++) {
+  const at = (x: number, y: number) => S.rows[y]?.[x] ?? "#";
+  const looksSolid = (x: number, y: number) => {
+    const ch = at(x, y);
+    return ch === "#" || ch === "f" || ch === "A" || ch === "B";
+  };
+  for (let y = 0; y < S.h; y++) {
+    for (let x = 0; x < S.w; x++) {
       const ch = at(x, y);
       const px = x * TILE, py = y * TILE;
-      if (ch === "#") {
-        const shade = ((x * 7 + y * 13) % 5) * 3;
-        g.fillStyle = `rgb(${46 + shade},${58 + shade},${50 + shade})`;
-        g.fillRect(px, py, TILE, TILE);
-        g.strokeStyle = "rgba(0,0,0,0.25)";
-        g.lineWidth = 1;
-        g.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
-        g.fillStyle = "rgba(255,255,255,0.04)";
-        g.fillRect(px + 2, py + 2, TILE - 4, 3);
-        const above = at(x, y - 1);
-        if (above !== "#" && above !== "A" && above !== "B") {
-          g.fillStyle = "#3f8f4a";
-          g.fillRect(px, py, TILE, 6);
-          g.fillStyle = "#62b65f";
-          for (let i = 0; i < 4; i++) g.fillRect(px + i * 8 + ((x + i) % 3), py + 4, 3, 4 + ((x * 3 + i) % 4));
-        }
+      if (S.trapAt[y * S.w + x] >= 0) continue;
+      if (ch === "#" || ch === "f") {
+        drawBlock(g, x, y, px, py, !looksSolid(x, y - 1));
       } else if (ch === "^") {
-        g.fillStyle = "#d9d2bd";
-        for (let i = 0; i < 4; i++) {
-          g.beginPath();
-          g.moveTo(px + i * 8, py + TILE);
-          g.lineTo(px + i * 8 + 4, py + 8);
-          g.lineTo(px + i * 8 + 8, py + TILE);
-          g.fill();
-        }
+        drawSpikes(g, px, py);
       }
     }
   }
@@ -179,7 +194,7 @@ function draw(
   w: World,
   client: RushClient,
   names: [string, string],
-  cam: { x: number; y: number; init: boolean },
+  cam: { x: number; y: number; init: boolean; stage: number },
   tiles: Tiles,
   now: number
 ) {
@@ -189,6 +204,7 @@ function draw(
     canvas.width = Math.round(cw * dpr);
     canvas.height = Math.round(ch * dpr);
   }
+  const STAGE = STAGES[w.stage];
   // Show ~12 tiles tall / at least ~16 tiles wide.
   const scale = Math.min(ch / (12 * TILE), cw / (16 * TILE)) * dpr;
   const viewW = canvas.width / scale, viewH = canvas.height / scale;
@@ -198,7 +214,7 @@ function draw(
   const midY = (pos[0].y + pos[1].y) / 2;
   const tx = Math.max(0, Math.min(STAGE.w * TILE - viewW, midX - viewW / 2));
   const ty = Math.max(Math.min(0, STAGE.h * TILE - viewH), Math.min(STAGE.h * TILE - viewH, midY - viewH * 0.55));
-  if (!cam.init) { cam.x = tx; cam.y = ty; cam.init = true; }
+  if (!cam.init || cam.stage !== w.stage) { cam.x = tx; cam.y = ty; cam.init = true; cam.stage = w.stage; }
   cam.x += (tx - cam.x) * 0.12;
   cam.y += (ty - cam.y) * 0.12;
 
@@ -219,9 +235,53 @@ function draw(
   }
   ctx.restore();
 
-  ctx.setTransform(scale, 0, 0, scale, -cam.x * scale, -cam.y * scale);
+  // death: shake the camera and flash red for a moment
+  const sinceDeath = now - client.lastDeathAt;
+  const shake = sinceDeath < 380 ? (1 - sinceDeath / 380) * 9 : 0;
+  const sx = shake ? (Math.random() - 0.5) * shake * 2 : 0, sy = shake ? (Math.random() - 0.5) * shake * 2 : 0;
+
+  ctx.setTransform(scale, 0, 0, scale, (-cam.x + sx) * scale, (-cam.y + sy) * scale);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(tiles, 0, 0);
+
+  // live trap tiles
+  STAGE.traps.forEach((trap, i) => {
+    if (trap.kind === "runaway") return;
+    const fired = w.traps[i] ?? -1;
+    const since = fired >= 0 ? w.stageTick - fired - ("delay" in trap ? trap.delay : 0) : -1;
+    for (let y = trap.tiles.y0; y <= trap.tiles.y1; y++) {
+      for (let x = trap.tiles.x0; x <= trap.tiles.x1; x++) {
+        const px = x * TILE, py = y * TILE;
+        if (trap.kind === "collapse") {
+          if (since < 0) {
+            // about to go: a little shiver once it's been triggered
+            const jitter = fired >= 0 ? Math.sin(now / 18 + x) * 1.5 : 0;
+            drawBlock(ctx, x, y, px + jitter, py, true);
+          } else if (since < 30) {
+            ctx.globalAlpha = 1 - since / 30;
+            drawBlock(ctx, x, y, px, py + since * since * 0.35, true);
+            ctx.globalAlpha = 1;
+          }
+        } else if (trap.kind === "spikes") {
+          if (spikeAt(STAGE, w, x, y)) drawSpikes(ctx, px, py, Math.min(1, (since + 1) / 4));
+        } else if (trap.kind === "invisible") {
+          if (fired >= 0) {
+            ctx.fillStyle = "rgba(125,255,176,0.12)";
+            ctx.fillRect(px, py, TILE, TILE);
+            ctx.strokeStyle = "rgba(125,255,176,0.75)";
+            ctx.setLineDash([4, 3]);
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
+            ctx.setLineDash([]);
+          } else if (Math.sin(now / 260 + x * 1.7) > 0.985) {
+            // the faintest sparkle — a hint for sharp eyes
+            ctx.fillStyle = "rgba(200,255,220,0.8)";
+            ctx.fillRect(px + 10 + (x % 3) * 4, py + 4, 2, 2);
+          }
+        }
+      }
+    }
+  });
 
   // dynamic tiles: plates, gates, checkpoints, exit
   const t = now / 1000;
@@ -254,7 +314,15 @@ function draw(
         ctx.lineTo(px + 34 + Math.sin(t * 4) * 2, py - 11);
         ctx.lineTo(px + 17, py - 4);
         ctx.fill();
-      } else if (c === "E" && STAGE.rows[y - 1]?.[x] !== "E" && STAGE.rows[y]?.[x - 1] !== "E") {
+      }
+    }
+  }
+
+  // exit (it may have run away)
+  {
+    const ex = currentExit(STAGE, w);
+    const px = ex.x0 * TILE, py = ex.y0 * TILE;
+    {
         const pulse = 0.5 + Math.sin(t * 3) * 0.2;
         const gr = ctx.createRadialGradient(px + TILE, py + TILE, 4, px + TILE, py + TILE, 52);
         gr.addColorStop(0, `rgba(125,255,176,${pulse})`);
@@ -269,7 +337,6 @@ function draw(
         ctx.quadraticCurveTo(px + TILE, py - 10, px + TILE * 2 - 2, py + 14);
         ctx.lineTo(px + TILE * 2 - 2, py + TILE * 2);
         ctx.stroke();
-      }
     }
   }
 

@@ -108,7 +108,9 @@ A two-player co-op platformer. The players are roped together (up to 7 tiles apa
 
 **Controls:** A/D or ←/→ move · W/↑/Space jump · S/↓/Shift **anchor** (become a fixed point) · **anchor + jump = reel** your partner in. On phones, on-screen buttons appear (landscape is best). Players can stand on each other's heads.
 
-**Stage 1 — The Overgrown Temple** (`shared/rush/stage.ts`):
+A run is **two stages back to back**. Clear both and you both win.
+
+**Stage 1 — The Overgrown Temple** (learn the moves):
 
 1. **Warm-up:** steps and a spike pit.
 2. **Gate A:** one player holds a plate while the other walks through and holds the far plate.
@@ -116,9 +118,20 @@ A two-player co-op platformer. The players are roped together (up to 7 tiles apa
 4. **The Well:** drop in to hold plate B, which opens Gate B. Your partner goes through, stands on the far plate, then anchors and reels you out.
 5. **Final run** over a spike pit to the exit.
 
-Falling on spikes sends both players back to the last checkpoint. There's a 10-minute limit, and players can retry as often as they like.
+**Stage 2 — The Devil's Gauntlet** (a troll stage, in the style of Level Devil):
 
-`npm run test:rush` runs a bot duo that clears the whole stage. It also proves the wall, Gate B and the Well **can't** be cleared solo. Edit the stage with the `fill()` rectangles in `stage.ts`, then re-run the test.
+- **A.** The floor right in front of you drops into spikes.
+- **B.** A calm, flat runway, until spikes pop out of it.
+- **C.** A bridge over spikes with two fake blocks.
+- **D.** A pit too wide to jump, but there are invisible stepping stones (watch for the faint sparkle).
+- **E.** Partner trap: the plate opens the gate, then drops the floor under whoever is waiting by it.
+- **F.** More pop-up spikes, then the exit runs away up a 4-tile wall, so you need the climb-and-reel move one more time.
+
+When a player dies, both screens shake and show who fell for it ("💀 @bob killed you both"). Both players go back to the last checkpoint. Collapsed floors and pop-up spikes reset when you die. Revealed stones and the moved exit stay as they are.
+
+There's a 10-minute limit **per stage**. If time runs out, the same duo restarts from the stage they reached.
+
+`npm run test:rush` runs a bot duo that clears both stages without dying. It also proves that the co-op obstacles can't be cleared solo, and that **every troll really catches a player who walks in without knowing it's there**. Edit the stages and traps in `stage.ts`, then re-run the test.
 
 ### How it runs
 
