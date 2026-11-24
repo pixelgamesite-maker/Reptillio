@@ -47,7 +47,7 @@ export default function Den() {
               <small>reptiles hatched</small>
             </div>
             <Pool label="FCFS" taken={stats.fcfs_taken} limit={stats.fcfs_limit} />
-            <Pool label="GTD" taken={stats.gtd_taken} limit={stats.gtd_limit} gold />
+            <Pool label="GTD (Rush winners)" taken={stats.gtd_taken} limit={stats.gtd_limit} gold />
             <div className="den-levels" aria-label="Players by level">
               {LEVELS.map((l) => {
                 const n = stats.by_level[l.level] ?? 0;
@@ -98,9 +98,9 @@ function Pool({ label, taken, limit, gold }: { label: string; taken: number; lim
   const pct = limit > 0 ? Math.min(100, (taken / limit) * 100) : 0;
   return (
     <div className={`den-stat den-pool ${gold ? "gold" : ""}`}>
-      <b>{taken.toLocaleString()}<span>/{limit.toLocaleString()}</span></b>
+      <b>{taken.toLocaleString()}{limit > 0 && <span>/{limit.toLocaleString()}</span>}</b>
       <small>{label} spots claimed</small>
-      <div className="pool-bar"><span style={{ width: `${pct}%` }} /></div>
+      {limit > 0 ? <div className="pool-bar"><span style={{ width: `${pct}%` }} /></div> : <div className="pool-nocap">No cap</div>}
     </div>
   );
 }

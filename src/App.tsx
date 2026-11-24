@@ -16,6 +16,7 @@ import Chapters from "./pages/Chapters";
 import Lab from "./pages/Lab";
 import Den from "./pages/Den";
 import Callback from "./pages/Callback";
+import Rush from "./pages/Rush";
 
 import "./styles/app.css";
 
@@ -55,6 +56,8 @@ export default function App() {
                     <Route path="/callback" element={<Callback />} />
                     <Route path="/den" element={<Den />} />
                     <Route path="/lab" element={<RequireAuth><Lab /></RequireAuth>} />
+                    <Route path="/rush" element={<Rush />} />
+                    <Route path="/rush/:code" element={<Rush />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </BrowserRouter>

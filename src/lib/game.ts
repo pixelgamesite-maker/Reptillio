@@ -30,6 +30,7 @@ export type GameState = {
   wallet: string | null;
   allocation: { tier: Tier; number: number; wallet: string; claimed_at: string } | null;
   referrals: { joined: number; rewarded: number };
+  rush: { won: boolean; won_at: string; partner: string | null; duration_ms: number } | null;
   campaign_open: boolean;
   server_now: string;
   config: Record<string, number>;
@@ -76,15 +77,17 @@ export type CampaignStats = {
   fcfs_limit: number;
   gtd_limit: number;
   campaign_ends_epoch: number;
+  rush_winners?: number;
+  rush_matches?: number;
 };
 
 export const LEVELS = [
   { level: 1, name: "Hatchling", blurb: "A Genesis Egg, humming with potential." },
   { level: 2, name: "Juvenile", blurb: "Freshly hatched and curious." },
-  { level: 3, name: "Hunter", blurb: "Claws out. Learning to stalk." },
-  { level: 4, name: "Predator", blurb: "Armoured and dangerous. FCFS unlocked." },
+  { level: 3, name: "Hunter", blurb: "Claws out. FCFS + Reptile Rush unlocked." },
+  { level: 4, name: "Predator", blurb: "Armoured and dangerous." },
   { level: 5, name: "Alpha", blurb: "Mutated. Leads the pack." },
-  { level: 6, name: "Apex", blurb: "The final form. GTD unlocked." },
+  { level: 6, name: "Apex", blurb: "The final form. Top of the Den." },
 ] as const;
 
 export const levelName = (lvl: number) => LEVELS[Math.max(0, Math.min(5, lvl - 1))].name;

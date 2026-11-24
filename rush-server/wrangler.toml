@@ -1,0 +1,27 @@
+# Reptile Rush game server — Cloudflare Worker + Durable Objects.
+# One Durable Object per room. It runs the authoritative 60 Hz simulation,
+# relays voice-chat signaling, and records wins in Supabase.
+#
+# Deploy:   npx wrangler deploy
+# Secrets:  npx wrangler secret put SUPABASE_URL
+#           npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+#           npx wrangler secret put TURN_KEY_ID          (optional, voice relay)
+#           npx wrangler secret put TURN_KEY_API_TOKEN   (optional, voice relay)
+
+name = "reptilio-rush"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RushRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RushRoom"]
+
+[vars]
+# Comma-separated list of sites allowed to call the server.
+ALLOWED_ORIGINS = "http://localhost:8080,http://127.0.0.1:4173,https://reptilio.xyz"
+# Local testing only: accept tokens like "dev:alice:3" without Supabase. NEVER "true" in production.
+DEV_AUTH = "false"

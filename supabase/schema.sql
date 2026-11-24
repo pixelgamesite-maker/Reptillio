@@ -29,10 +29,10 @@ insert into app_config (key, value) values
   ('quiz_wrong_reward',        10),  -- answered but wrong (0 to disable)
   ('referral_points',          50),  -- paid when the referred player reaches Level 2
   ('referral_max_rewarded',    10),  -- referrals that pay out, per player
-  ('fcfs_level',                4),  -- Predator
-  ('gtd_level',                 6),  -- Apex
-  ('fcfs_limit',             1000),
-  ('gtd_limit',               500),
+  ('fcfs_level',                3),  -- Hunter: FCFS + unlocks Reptile Rush
+  ('rush_min_level',            3),  -- both players need this level to play Rush
+  ('fcfs_limit',             1000),  -- 0 = no cap
+  ('gtd_limit',                 0),  -- 0 = no cap. GTD comes only from winning Reptile Rush.
   ('campaign_ends_epoch',       0)   -- unix seconds; 0 = no end. Earning stops after it.
 on conflict (key) do nothing;
 
@@ -186,6 +186,25 @@ create table if not exists whitelist_allocations (
   unique (tier, number)
 );
 
+-- Reptile Rush: one row per cleared match, one row per player who has won.
+-- Written ONLY by rush_record_win(), which only the game server (service role) can call.
+create table if not exists rush_matches (
+  id          bigint generated always as identity primary key,
+  room_code   text not null,
+  p1          uuid not null references profiles(id) on delete cascade,
+  p2          uuid not null references profiles(id) on delete cascade,
+  duration_ms int  not null,
+  deaths      int  not null default 0,
+  finished_at timestamptz not null default now()
+);
+
+create table if not exists rush_wins (
+  user_id    uuid primary key references profiles(id) on delete cascade,
+  match_id   bigint not null references rush_matches(id) on delete cascade,
+  partner_id uuid references profiles(id) on delete set null,
+  won_at     timestamptz not null default now()
+);
+
 create table if not exists admin_audit_logs (
   id             bigint generated always as identity primary key,
   admin_id       uuid not null references profiles(id),
@@ -196,11 +215,12 @@ create table if not exists admin_audit_logs (
 );
 
 -- ── Seeds ─────────────────────────────────────────────────────────────
--- Full ladder costs 1,200 DNA. Predator (FCFS) = 500, Apex (GTD) = 1,200.
+-- Full ladder costs 1,200 DNA. Hunter (FCFS + Reptile Rush) = 250. Levels 4–6 are bragging rights;
+-- GTD comes only from clearing Reptile Rush with a partner.
 insert into items (key, name, description, price, sort, purchasable) values
   ('genesis_egg',        'Genesis Egg',        'Your free starting egg. Every reptile begins here.',              0, 1, false),
   ('vitality_extract',   'Vitality Extract',   'Physical development. Cracks the egg open.',                    100, 2, true),
-  ('dna_capsule',        'DNA Capsule',        'Genetic material for a sharper, hunting body.',                 150, 3, true),
+  ('dna_capsule',        'DNA Capsule',        'Hunter form. Unlocks FCFS and Reptile Rush.',                   150, 3, true),
   ('ancient_scale',      'Ancient Scale',      'Armoured hide. Evolves your reptile into a Predator.',          250, 4, true),
   ('mutation_core',      'Mutation Core',      'Molten genetic mutation. Unlocks the Alpha form.',              300, 5, true),
   ('evolution_catalyst', 'Evolution Catalyst', 'The rarest resource. Triggers the final Apex transformation.',  400, 6, true)
@@ -328,6 +348,11 @@ begin
     'wallet', (select address from wallets where user_id = me),
     'allocation', (select jsonb_build_object('tier', tier, 'number', number, 'wallet', wallet, 'claimed_at', claimed_at)
                      from whitelist_allocations where user_id = me),
+    'rush', (select jsonb_build_object('won', true, 'won_at', rw.won_at, 'partner', pp.handle,
+                                        'duration_ms', rm.duration_ms)
+               from rush_wins rw join rush_matches rm on rm.id = rw.match_id
+               left join profiles pp on pp.id = rw.partner_id
+               where rw.user_id = me),
     'referrals', jsonb_build_object(
       'joined',   (select count(*) from profiles where referred_by = me),
       'rewarded', (select count(*) from dna_ledger where user_id = me and source = 'referral')
@@ -669,9 +694,10 @@ begin
 end;
 $$;
 
--- FCFS at Predator, GTD at Apex. Separate pools, atomic, capped. A player
--- holding FCFS who reaches Apex calls this again to upgrade: the FCFS slot
--- is released in the same transaction.
+-- FCFS at Hunter (Level 3). GTD only for Reptile Rush winners. Separate
+-- pools, atomic, optional caps (0 = none). A player holding FCFS who wins
+-- Rush calls this again to upgrade: the FCFS slot is released in the same
+-- transaction.
 create or replace function claim_whitelist()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -688,9 +714,9 @@ begin
   select address into w from wallets where user_id = me;
   if w is null then raise exception 'Verify a wallet first'; end if;
 
-  if p.level >= cfg('gtd_level') then want := 'gtd';
+  if exists (select 1 from rush_wins where user_id = me) then want := 'gtd';
   elsif p.level >= cfg('fcfs_level') then want := 'fcfs';
-  else raise exception 'Reach Level % (Predator) to unlock the whitelist', cfg('fcfs_level');
+  else raise exception 'Reach Level % (Hunter) to unlock the whitelist', cfg('fcfs_level');
   end if;
 
   select * into cur from whitelist_allocations where user_id = me;
@@ -702,7 +728,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('reptilio_wl_' || want));
   lim := cfg(want || '_limit')::int;
   select count(*), coalesce(max(number), 0) + 1 into taken, num from whitelist_allocations where tier = want;
-  if taken >= lim then
+  if lim > 0 and taken >= lim then
     raise exception 'All % % spots are taken', lim, upper(want);
   end if;
 
@@ -713,6 +739,47 @@ begin
   end if;
 
   return player_state(me);
+end;
+$$;
+
+-- ── Reptile Rush (game server only — service role) ────────────────────
+-- What the game server needs to seat a player. Never callable from browsers.
+create or replace function rush_player(uid uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'id', p.id, 'handle', p.handle, 'avatar_url', coalesce(p.avatar_url, ''), 'reptilio_id', p.reptilio_id,
+    'level', p.level, 'banned', p.is_banned,
+    'won', exists (select 1 from rush_wins where user_id = p.id),
+    'min_level', cfg('rush_min_level')
+  )
+  from profiles p where p.id = uid;
+$$;
+
+-- Called by the game server when its simulation sees both players in the
+-- exit. Re-checks eligibility here too; each player can only win once.
+create or replace function rush_record_win(room text, p1 uuid, p2 uuid, duration_ms int, deaths int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  a profiles; b profiles; mid bigint; fresh uuid[] := '{}';
+begin
+  if p1 = p2 then raise exception 'A duo needs two different players'; end if;
+  if not campaign_open() then raise exception 'The campaign has ended'; end if;
+  -- lock in a fixed order so two simultaneous results can't deadlock
+  if p1 < p2 then a := lock_player(p1); b := lock_player(p2);
+  else b := lock_player(p2); a := lock_player(p1); end if;
+  if a.level < cfg('rush_min_level') or b.level < cfg('rush_min_level') then
+    raise exception 'Both players must be Level %', cfg('rush_min_level');
+  end if;
+
+  insert into rush_matches (room_code, p1, p2, duration_ms, deaths)
+  values (room, p1, p2, greatest(duration_ms, 0), greatest(deaths, 0)) returning id into mid;
+
+  insert into rush_wins (user_id, match_id, partner_id) values (p1, mid, p2) on conflict do nothing;
+  if found then fresh := fresh || p1; end if;
+  insert into rush_wins (user_id, match_id, partner_id) values (p2, mid, p1) on conflict do nothing;
+  if found then fresh := fresh || p2; end if;
+
+  return jsonb_build_object('match_id', mid, 'new_winners', to_jsonb(fresh));
 end;
 $$;
 
@@ -745,6 +812,8 @@ returns jsonb language sql stable security definer set search_path = public as $
     'gtd_taken',  (select count(*) from whitelist_allocations where tier = 'gtd'),
     'fcfs_limit', cfg('fcfs_limit'),
     'gtd_limit',  cfg('gtd_limit'),
+    'rush_winners', (select count(*) from rush_wins),
+    'rush_matches', (select count(*) from rush_matches),
     'campaign_ends_epoch', cfg('campaign_ends_epoch')
   );
 $$;
@@ -824,6 +893,8 @@ revoke execute on function award_dna(uuid, int, text, text, text) from public, a
 revoke execute on function is_admin()                            from public, anon, authenticated;
 revoke execute on function player_state(uuid)                    from public, anon, authenticated;
 revoke execute on function link_verified_wallet(uuid)            from public, anon, authenticated;
+revoke execute on function rush_player(uuid)                     from public, anon, authenticated;
+revoke execute on function rush_record_win(text, uuid, uuid, int, int) from public, anon, authenticated;
 
 grant execute on function ensure_profile(text)        to authenticated;
 grant execute on function get_state()                 to authenticated;
@@ -843,6 +914,8 @@ grant execute on function admin_revoke_allocation(uuid, text)    to authenticate
 grant execute on function admin_set_config(text, bigint)         to authenticated;
 grant execute on function admin_export_whitelist()               to authenticated;
 grant execute on function link_verified_wallet(uuid)  to service_role;
+grant execute on function rush_player(uuid)           to service_role;
+grant execute on function rush_record_win(text, uuid, uuid, int, int) to service_role;
 
 -- Row Level Security: reads only. No table has an insert/update/delete
 -- policy, so the only way to change anything is through the RPCs above.
@@ -862,6 +935,8 @@ alter table wallets                enable row level security;
 alter table wallet_challenges      enable row level security;
 alter table whitelist_allocations  enable row level security;
 alter table admin_audit_logs       enable row level security;
+alter table rush_matches           enable row level security;  -- no client policy
+alter table rush_wins              enable row level security;
 
 drop policy if exists "read config"       on app_config;             create policy "read config"       on app_config             for select using (true);
 drop policy if exists "read items"        on items;                  create policy "read items"        on items                  for select using (active);
@@ -875,4 +950,5 @@ drop policy if exists "own evolutions"    on evolution_history;      create poli
 drop policy if exists "own user tasks"    on user_tasks;             create policy "own user tasks"    on user_tasks             for select using (auth.uid() = user_id);
 drop policy if exists "own wallet"        on wallets;                create policy "own wallet"        on wallets                for select using (auth.uid() = user_id);
 drop policy if exists "own allocation"    on whitelist_allocations;  create policy "own allocation"    on whitelist_allocations  for select using (auth.uid() = user_id);
+drop policy if exists "own rush win"      on rush_wins;              create policy "own rush win"      on rush_wins              for select using (auth.uid() = user_id);
 -- quiz_attempts, wallet_challenges, admin_audit_logs: no client policy.

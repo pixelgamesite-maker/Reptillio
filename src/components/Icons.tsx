@@ -84,3 +84,12 @@ export const QuizIcon = ({ size, className }: P) => (
     <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.6V14M12 17.2v.1" />
   </svg>
 );
+
+export const RopeIcon = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <circle cx="5.5" cy="7" r="2.5" />
+    <circle cx="18.5" cy="7" r="2.5" />
+    <path d="M8 7.5c2 6 6 6 8 0" />
+    <path d="M4 20l1.5-10.5M20 20l-1.5-10.5" />
+  </svg>
+);
