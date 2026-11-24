@@ -21,6 +21,18 @@ export type PlayerInfo = {
 };
 
 /**
+ * Headers for server-to-Supabase calls. Works with both key styles:
+ * new secret keys (sb_secret_…) go ONLY in `apikey` — they aren't JWTs and
+ * Supabase rejects them in `Authorization`. Legacy service_role keys are
+ * JWTs and are sent in both, as before.
+ */
+function serviceHeaders(key: string): Record<string, string> {
+  const h: Record<string, string> = { apikey: key, "Content-Type": "application/json" };
+  if (key.startsWith("eyJ")) h.Authorization = `Bearer ${key}`;
+  return h;
+}
+
+/**
  * Turn a Supabase access token into a PlayerInfo.
  * 1) Supabase Auth validates the token and tells us the user id.
  * 2) rush_player() (service-role only) returns their level, ban status, wins.
@@ -46,7 +58,7 @@ export async function playerFromToken(env: Env, token: string): Promise<PlayerIn
 
   const r = await fetch(`${url}/rest/v1/rpc/rush_player`, {
     method: "POST",
-    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: serviceHeaders(key),
     body: JSON.stringify({ uid: user.id }),
   });
   if (!r.ok) throw new Error(`rush_player failed: ${r.status}`);
@@ -58,7 +70,7 @@ export async function recordWin(env: Env, body: { room: string; p1: string; p2: 
   const url = env.SUPABASE_URL!, key = env.SUPABASE_SERVICE_ROLE_KEY!;
   const r = await fetch(`${url}/rest/v1/rpc/rush_record_win`, {
     method: "POST",
-    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: serviceHeaders(key),
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`rush_record_win failed: ${r.status} ${await r.text()}`);
