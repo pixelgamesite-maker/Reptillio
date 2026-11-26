@@ -17,6 +17,7 @@ import Lab from "./pages/Lab";
 import Den from "./pages/Den";
 import Callback from "./pages/Callback";
 import Rush from "./pages/Rush";
+import Landing from "./pages/Landing";
 
 import "./styles/app.css";
 
@@ -32,6 +33,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (!signedIn) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+/** "/" — the art + Connect with X for visitors; Chapters once signed in. */
+function Home() {
+  const { signedIn } = useAuth();
+  return signedIn ? <Chapters /> : <Landing />;
 }
 
 const queryClient = new QueryClient();
@@ -52,7 +59,7 @@ export default function App() {
                 <BrowserRouter>
                   {DEMO && <div className="demo-flag">Demo mode · fake data</div>}
                   <Routes>
-                    <Route path="/" element={<Chapters />} />
+                    <Route path="/" element={<Home />} />
                     <Route path="/callback" element={<Callback />} />
                     <Route path="/den" element={<Den />} />
                     <Route path="/lab" element={<RequireAuth><Lab /></RequireAuth>} />

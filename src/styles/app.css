@@ -890,3 +890,45 @@ img { display: block; }
 .rush-stage-banner small { font-weight: 800; letter-spacing: 0.25em; text-transform: uppercase; color: #ffb4aa; font-size: 0.72rem; }
 .rush-stage-banner b { font-family: var(--display); font-weight: 400; font-size: clamp(1.6rem, 5vw, 2.6rem); color: #fff1ee; }
 .rush-stage-banner span { color: #ffb4aa; font-size: 0.9rem; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANDING (signed-out "/")
+   ═══════════════════════════════════════════════════════════════════ */
+.landing { position: relative; min-height: 100vh; min-height: 100dvh; overflow: hidden; background: #1b5fae; display: grid; place-items: center; }
+.landing-art {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  object-position: 62% 45%; /* keeps the chameleon + the car in frame on phones */
+  animation: landing-in 1.2s ease-out both;
+}
+@keyframes landing-in { from { transform: scale(1.06); opacity: 0; } }
+.landing-shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 42% at 50% 50%, rgba(10, 20, 35, 0.55), rgba(10, 20, 35, 0) 70%),
+    linear-gradient(180deg, rgba(8, 18, 32, 0.25) 0%, rgba(8, 18, 32, 0) 30%, rgba(8, 18, 32, 0) 70%, rgba(8, 18, 32, 0.45) 100%);
+}
+.landing-center {
+  position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
+  padding: 24px; max-width: 560px; animation: landing-rise 0.8s 0.25s cubic-bezier(.2,1.3,.4,1) both;
+}
+@keyframes landing-rise { from { transform: translateY(24px); opacity: 0; } }
+.landing-title {
+  margin: 0; font-family: var(--display); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: clamp(3rem, 12vw, 6.5rem); line-height: 0.9; color: #f4ffe9;
+  -webkit-text-stroke: 3px #0d2a1a; paint-order: stroke fill;
+  text-shadow: 0 6px 0 #0d2a1a, 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.landing-tag { margin: 0; color: #fff; font-weight: 700; font-size: clamp(1rem, 2.6vw, 1.2rem); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7); max-width: 30ch; }
+.landing-cta {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 12px;
+  padding: 16px 30px; border-radius: 999px; border: 3px solid #0b0f0d;
+  background: #fff; color: #0b0f0d; font-family: var(--display); font-size: clamp(1.2rem, 3.4vw, 1.5rem); letter-spacing: 0.02em;
+  box-shadow: 0 6px 0 #0b0f0d, 0 16px 40px rgba(0, 0, 0, 0.4);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.landing-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 0 #0b0f0d, 0 20px 44px rgba(0, 0, 0, 0.45); }
+.landing-cta:active { transform: translateY(4px); box-shadow: 0 2px 0 #0b0f0d; }
+.landing-cta:disabled { opacity: 0.7; }
+.landing-note { margin: 0; color: rgba(255, 255, 255, 0.92); font-size: 0.85rem; font-weight: 600; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8); }
+.landing-foot { position: absolute; z-index: 2; bottom: max(16px, env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; }
+.landing-foot a { color: #fff; font-weight: 700; font-size: 0.85rem; text-decoration: none; padding: 8px 14px; border-radius: 99px; background: rgba(8, 18, 32, 0.45); backdrop-filter: blur(4px); }

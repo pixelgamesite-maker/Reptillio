@@ -31,20 +31,14 @@ export function TopBar({ title, left, variant = "paper" }: { title?: ReactNode; 
 }
 
 function XButton() {
-  const { signedIn, signInWithX, signOut } = useAuth();
+  const { signedIn, signOut } = useAuth();
   const { state } = useGame();
-  const { muted, toggleMute, play } = useSound();
+  const { muted, toggleMute } = useSound();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  if (!signedIn) {
-    return (
-      <button className="kraft-btn x-btn" onClick={() => { play("select"); signInWithX(); }} aria-label="Sign in with X">
-        <XGlyph size={18} />
-        <span className="x-btn-text">Sign in</span>
-      </button>
-    );
-  }
+  // Signing in happens on the landing page now; the corner only shows your profile.
+  if (!signedIn) return null;
 
   const p = state?.profile;
   const link = p ? `${window.location.origin}/?ref=${p.reptilio_id}` : "";

@@ -41,9 +41,9 @@ export function takeNext(): string {
   try {
     const n = localStorage.getItem(NEXT_KEY);
     localStorage.removeItem(NEXT_KEY);
-    return n && n.startsWith("/") ? n : "/lab";
+    return n && n.startsWith("/") ? n : "/";
   } catch {
-    return "/lab";
+    return "/";
   }
 }
 
