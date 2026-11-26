@@ -22,6 +22,6 @@ new_sqlite_classes = ["RushRoom"]
 
 [vars]
 # Comma-separated list of sites allowed to call the server.
-ALLOWED_ORIGINS = "http://localhost:8080,http://127.0.0.1:4173,https://reptilio.xyz"
+ALLOWED_ORIGINS = "https://reptilio.fun,https://www.reptilio.fun,http://localhost:8080,http://127.0.0.1:4173"
 # Local testing only: accept tokens like "dev:alice:3" without Supabase. NEVER "true" in production.
 DEV_AUTH = "false"
