@@ -37,8 +37,17 @@ export default function Callback() {
         return;
       }
 
-      const { data, error: sessErr } = await supabase.auth.getSession();
+      // initialize() hands back the result of the automatic code exchange — including its error, if any.
+      const { error: initErr } = await supabase.auth.initialize();
+      const { data, error: getErr } = await supabase.auth.getSession();
       if (data.session) return finish();
+      const sessErr = initErr ?? getErr;
+      let hadVerifier = false;
+      try {
+        hadVerifier = Object.keys(localStorage).some((k) => k.endsWith("-code-verifier"));
+      } catch {
+        /* storage blocked */
+      }
 
       // Give the automatic exchange a moment, then explain what went wrong.
       await new Promise((r) => setTimeout(r, 2500));
@@ -47,6 +56,14 @@ export default function Callback() {
       if (again.data.session) return finish();
 
       const msg = (sessErr?.message || "").toLowerCase();
+      console.error("Sign-in failed", { sessErr, hadVerifier, host: window.location.host });
+      if (query.get("code") && !sessErr && !hadVerifier) {
+        setError(
+          "This sign-in was finished in a different browser or tab than it started in (this happens when the X app opens on a phone). " +
+            "Open reptilio.fun in your normal browser and tap Connect with X there."
+        );
+        return;
+      }
       if (!query.get("code")) {
         setError("No sign-in came back from X. Tap Connect with X again.");
       } else if (msg.includes("verifier") || msg.includes("flow state")) {
