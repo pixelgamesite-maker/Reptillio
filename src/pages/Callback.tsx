@@ -4,37 +4,64 @@ import { supabase } from "../lib/supabase";
 import { takeNext } from "../hooks/useAuth";
 import { Reptile } from "../components/Reptile";
 
-/** /callback — finishes the X OAuth (PKCE) handshake, then drops the player where they were headed. */
+/**
+ * /callback — X sends the player back here with a one-time ?code=.
+ * supabase-js (detectSessionInUrl + PKCE) exchanges that code by itself when
+ * it starts up, and getSession() waits for that to finish — so we must NOT
+ * exchange it again here (doing both races and can burn the code).
+ */
 export default function Callback() {
   const navigate = useNavigate();
   const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
+    let done = false;
+    const finish = () => {
+      if (done || !alive) return;
+      done = true;
+      navigate(takeNext(), { replace: true });
+    };
+
+    // A session can also land a moment later via the auth event.
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session) finish();
+    });
+
     (async () => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("error_description")) {
-        setError(params.get("error_description") as string);
+      const query = new URLSearchParams(window.location.search);
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const denied = query.get("error_description") || hash.get("error_description");
+      if (denied) {
+        setError(`X sign-in didn't complete: ${denied}`);
         return;
       }
-      if (params.get("code")) {
-        const { error: exErr } = await supabase.auth.exchangeCodeForSession(window.location.search);
-        if (exErr && alive) {
-          // Often the code was already exchanged by detectSessionInUrl — check for a session before failing.
-          const { data } = await supabase.auth.getSession();
-          if (!data.session) {
-            setError("That sign-in link expired. Head back and tap Sign in again.");
-            return;
-          }
-        }
+
+      const { data, error: sessErr } = await supabase.auth.getSession();
+      if (data.session) return finish();
+
+      // Give the automatic exchange a moment, then explain what went wrong.
+      await new Promise((r) => setTimeout(r, 2500));
+      if (done || !alive) return;
+      const again = await supabase.auth.getSession();
+      if (again.data.session) return finish();
+
+      const msg = (sessErr?.message || "").toLowerCase();
+      if (!query.get("code")) {
+        setError("No sign-in came back from X. Tap Connect with X again.");
+      } else if (msg.includes("verifier") || msg.includes("flow state")) {
+        setError(
+          `Sign-in started on a different web address than it finished on (${window.location.host}). ` +
+            "Open reptilio.fun directly and tap Connect with X again."
+        );
+      } else {
+        setError(`Sign-in couldn't finish${sessErr?.message ? `: ${sessErr.message}` : ""}. Tap Connect with X again.`);
       }
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      if (data.session) navigate(takeNext(), { replace: true });
-      else setError("No session came back from X. Try signing in once more.");
     })();
+
     return () => {
       alive = false;
+      sub.subscription.unsubscribe();
     };
   }, [navigate]);
 
@@ -46,7 +73,7 @@ export default function Callback() {
         {error ? (
           <>
             <p className="callback-err">{error}</p>
-            <button className="kraft-btn" onClick={() => navigate("/", { replace: true })}>Back to Chapters</button>
+            <button className="kraft-btn" onClick={() => navigate("/", { replace: true })}>Back to start</button>
           </>
         ) : (
           <h2>Incubating your egg…</h2>
