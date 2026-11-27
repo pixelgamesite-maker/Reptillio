@@ -26,6 +26,6 @@ export const ASSETS = {
 };
 
 export const LINKS = {
-  x: "https://x.com/REPTILIO_HANDLE", // ⚠️ replace with the real account
+  x: "https://x.com/reptiliorbh",
   site: typeof window !== "undefined" ? window.location.origin : "https://reptilio.fun",
 };

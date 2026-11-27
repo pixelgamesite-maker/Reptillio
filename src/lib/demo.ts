@@ -33,10 +33,10 @@ const REQS: Requirement[] = [
 ];
 
 const TASKS: Task[] = [
-  { key: "follow", label: "Follow @Reptilio on X", points: 100, href: "https://x.com", sort: 1 },
-  { key: "like", label: "Like the campaign post", points: 25, href: "https://x.com", sort: 2 },
-  { key: "repost", label: "Repost the campaign post", points: 25, href: "https://x.com", sort: 3 },
-  { key: "quote", label: "Quote the post with your Reptilio ID", points: 50, href: "https://x.com", sort: 4 },
+  { key: "follow", label: "Follow @reptiliorbh on X", points: 100, href: "https://x.com/reptiliorbh", sort: 1 },
+  { key: "like", label: "Like the campaign post", points: 25, href: "https://x.com/reptiliorbh", sort: 2 },
+  { key: "repost", label: "Repost the campaign post", points: 25, href: "https://x.com/reptiliorbh", sort: 3 },
+  { key: "quote", label: "Quote the post with your Reptilio ID", points: 50, href: "https://x.com/reptiliorbh", sort: 4 },
 ];
 
 const QUESTIONS = [

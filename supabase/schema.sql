@@ -237,12 +237,13 @@ insert into evolution_requirements (target_level, item_key, quantity) values
   (6, 'evolution_catalyst', 1)
 on conflict (target_level, item_key) do nothing;
 
--- ⚠️ Replace REPTILIO_HANDLE / POST_ID with the real account and campaign post.
+-- Like/repost/quote point at the profile until the campaign post exists; then
+-- update task_catalog.href to https://x.com/reptiliorbh/status/<post id>.
 insert into task_catalog (key, label, points, href, sort) values
-  ('follow', 'Follow @Reptilio on X',          100, 'https://x.com/REPTILIO_HANDLE', 1),
-  ('like',   'Like the campaign post',          25, 'https://x.com/REPTILIO_HANDLE/status/POST_ID', 2),
-  ('repost', 'Repost the campaign post',        25, 'https://x.com/REPTILIO_HANDLE/status/POST_ID', 3),
-  ('quote',  'Quote the post with your Reptilio ID', 50, 'https://x.com/REPTILIO_HANDLE/status/POST_ID', 4)
+  ('follow', 'Follow @reptiliorbh on X',          100, 'https://x.com/reptiliorbh', 1),
+  ('like',   'Like the campaign post',          25, 'https://x.com/reptiliorbh', 2),
+  ('repost', 'Repost the campaign post',        25, 'https://x.com/reptiliorbh', 3),
+  ('quote',  'Quote the post with your Reptilio ID', 50, 'https://x.com/reptiliorbh', 4)
 on conflict (key) do nothing;
 
 -- ── Helpers (internal — not callable by clients) ──────────────────────

@@ -67,8 +67,8 @@ export function WhitelistModal({ onClose }: { onClose: () => void }) {
 
   const shareText = alloc
     ? alloc.tier === "gtd"
-      ? `We cleared Reptile Rush 🦎🪢🦎 and both secured GTD on @Reptilio 👑\n\nGrab a partner → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
-      : `My reptile evolved to Hunter 🦎 and secured an FCFS spot on @Reptilio 🧬\n\nEvolve yours → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
+      ? `We cleared Reptile Rush 🦎🪢🦎 and both secured GTD on @reptiliorbh 👑\n\nGrab a partner → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
+      : `My reptile evolved to Hunter 🦎 and secured an FCFS spot on @reptiliorbh 🧬\n\nEvolve yours → ${window.location.origin}/?ref=${state.profile.reptilio_id}`
     : "";
 
   return (

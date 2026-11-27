@@ -36,7 +36,7 @@ Demo mode fakes the whole backend in the browser. Jump ahead with `?level=4&dna=
 2. **X login**: Authentication → Providers → enable **X / Twitter (OAuth 2.0)**. Add `https://YOUR-SITE/callback` to Redirect URLs. If your project lists the provider as `twitter`, change `"x"` in `src/hooks/useAuth.tsx`.
 3. **Wallet verification**: `supabase functions deploy verify-wallet`. Optionally `supabase secrets set ROBINHOOD_RPC_URL=…` (needed only for smart-contract wallets).
 4. **Env**: copy `.env.example` → `.env.local`, then fill in `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and `VITE_WALLETCONNECT_PROJECT_ID` (free at cloud.reown.com).
-5. **Replace placeholders**: `REPTILIO_HANDLE` / `POST_ID` in `task_catalog` (schema.sql) and `LINKS.x` in `src/lib/assets.ts`.
+5. **Campaign post**: once it's live, point the like/repost/quote tasks at it: `update task_catalog set href = 'https://x.com/reptiliorbh/status/<post id>' where key in ('like','repost','quote');`
 6. **Make yourself admin**: `update profiles set is_admin = true where handle = 'yourhandle';`
 7. **Reptile Rush server** — see [Reptile Rush](#reptile-rush) below, then set `VITE_RUSH_URL`.
 8. `npm run build` → serve `dist/` (a Caddyfile for SPA routing is included).
