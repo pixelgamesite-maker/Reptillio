@@ -48,7 +48,7 @@ export async function playerFromToken(env: Env, token: string): Promise<PlayerIn
     };
   }
 
-  const url = env.SUPABASE_URL, key = env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = env.SUPABASE_URL?.trim().replace(/\/+$/, ""), key = env.SUPABASE_SERVICE_ROLE_KEY?.replace(/[^\x21-\x7E]/g, "");
   if (!url || !key) throw new Error("Server not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
 
   const u = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` } });
@@ -67,7 +67,7 @@ export async function playerFromToken(env: Env, token: string): Promise<PlayerIn
 
 export async function recordWin(env: Env, body: { room: string; p1: string; p2: string; duration_ms: number; deaths: number }) {
   if (env.DEV_AUTH === "true" && body.p1.startsWith("dev-")) return { new_winners: [body.p1, body.p2], dev: true };
-  const url = env.SUPABASE_URL!, key = env.SUPABASE_SERVICE_ROLE_KEY!;
+  const url = env.SUPABASE_URL!.trim().replace(/\/+$/, ""), key = env.SUPABASE_SERVICE_ROLE_KEY!.replace(/[^\x21-\x7E]/g, "");
   const r = await fetch(`${url}/rest/v1/rpc/rush_record_win`, {
     method: "POST",
     headers: serviceHeaders(key),

@@ -3,8 +3,7 @@
 # relays voice-chat signaling, and records wins in Supabase.
 #
 # Deploy:   npx wrangler deploy
-# Secrets:  npx wrangler secret put SUPABASE_URL
-#           npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# Secrets:  npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 #           npx wrangler secret put TURN_KEY_ID          (optional, voice relay)
 #           npx wrangler secret put TURN_KEY_API_TOKEN   (optional, voice relay)
 
@@ -21,6 +20,8 @@ tag = "v1"
 new_sqlite_classes = ["RushRoom"]
 
 [vars]
+# Your Supabase project (not secret). The secret key goes in as a Secret, never here.
+SUPABASE_URL = "https://xllmacobisbbmyggbkwo.supabase.co"
 # Comma-separated list of sites allowed to call the server.
 ALLOWED_ORIGINS = "https://reptilio.fun,https://www.reptilio.fun,http://localhost:8080,http://127.0.0.1:4173"
 # Local testing only: accept tokens like "dev:alice:3" without Supabase. NEVER "true" in production.
