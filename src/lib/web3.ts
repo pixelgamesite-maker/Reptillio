@@ -18,7 +18,7 @@ export const robinhoodChain = defineChain({
   },
 });
 
-const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "";
+const projectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").replace(/[^\x21-\x7E]/g, "");
 if (!projectId) {
   console.warn("VITE_WALLETCONNECT_PROJECT_ID missing — browser wallets work, WalletConnect (mobile QR) won't.");
 }

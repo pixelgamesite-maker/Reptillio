@@ -11,7 +11,7 @@ import { supabase, DEMO } from "./supabase";
 import { cloneWorld, decodeInput, encodeInput, step, unpackWorld, NO_INPUT, type Input, type World, DT } from "../../shared/rush/sim";
 import type { RoomStatus, SeatView, ServerMsg } from "../../shared/rush/protocol";
 
-export const RUSH_URL = (import.meta.env.VITE_RUSH_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
+export const RUSH_URL = (String(import.meta.env.VITE_RUSH_URL || "").replace(/[^\x21-\x7E]/g, "") || "http://127.0.0.1:8787").replace(/\/+$/, "");
 
 /** Supabase access token, or a dev token in demo mode (server must run with DEV_AUTH=true). */
 export async function rushToken(demoHandle?: string, demoLevel?: number) {
